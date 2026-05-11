@@ -188,26 +188,33 @@ export async function ingestData(text: string, options: IngestDataOptions = {}) 
   });
 
   const docs = await splitter.createDocuments([text], [options.metadata ?? {}]);
-  
-  // Lọc bỏ các đoạn văn bản trống để tránh lỗi "empty array at index 0"
   const validDocs = docs.filter(doc => doc.pageContent.trim().length > 0);
+  if (validDocs.length === 0) return { addedIds: [], chunks: 0 };
 
-  if (validDocs.length === 0) {
-    return { addedIds: [], chunks: 0 };
-  }
+  // 1. Khởi tạo client và embedding thủ công
+  const chromaUrl = getChromaUrl(options.chromaUrl);
+  const client = await getChromaClient(chromaUrl);
+  const embeddingsModel = getEmbeddings();
+  const collectionName = getCollectionName(options.collectionName);
 
-  const vectorStore = await getVectorStore({
-    chromaUrl: options.chromaUrl,
-    collectionName: options.collectionName,
+  // 2. Lấy hoặc Tạo collection trực tiếp từ client (Bỏ qua LangChain ensureCollection)
+  const collection = await client.getOrCreateCollection({ name: collectionName });
+
+  // 3. Tạo vector embeddings
+  const rawTexts = validDocs.map(d => d.pageContent);
+  const vectors = await embeddingsModel.embedDocuments(rawTexts);
+  
+  // 4. Đẩy trực tiếp vào Chroma
+  const ids = validDocs.map((_, i) => options.ids?.[i] ?? crypto.randomUUID());
+  await collection.add({
+    ids: ids,
+    embeddings: vectors,
+    metadatas: validDocs.map(d => d.metadata),
+    documents: rawTexts
   });
- 
-  const addedIds = await vectorStore.addDocuments(validDocs as Document[], {
-    ids: options.ids,
-  });
 
-  return { addedIds, chunks: docs.length };
+  return { addedIds: ids, chunks: validDocs.length };
 }
-
 /**
  * Query ChromaDB for relevant context chunks.
  */
