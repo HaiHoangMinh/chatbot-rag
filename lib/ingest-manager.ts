@@ -2,6 +2,17 @@ import fs from "fs";
 import path from "path";
 import { ingestData } from "./chroma";
 
+function serializeError(err: unknown) {
+  if (err instanceof Error) {
+    return {
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+    };
+  }
+  return { message: String(err) };
+}
+
 /**
  * Tự động nạp dữ liệu từ thư mục data/company
  * Hỗ trợ .txt và .md mặc định.
@@ -45,7 +56,8 @@ export async function ingestCompanyData() {
 
     return { success: true, count };
   } catch (error) {
-    console.error("Lỗi khi nạp dữ liệu từ thư mục:", error);
-    return { success: false, error };
+    const serialized = serializeError(error);
+    console.error("Lỗi khi nạp dữ liệu từ thư mục:", serialized);
+    return { success: false, error: serialized };
   }
 }

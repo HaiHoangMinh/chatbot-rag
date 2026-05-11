@@ -3,6 +3,17 @@ import { ingestCompanyData } from "@/lib/ingest-manager";
 
 export const runtime = "nodejs";
 
+function serializeError(err: unknown) {
+  if (err instanceof Error) {
+    return {
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+    };
+  }
+  return { message: String(err) };
+}
+
 function isAuthorized(req: Request) {
   const expected = process.env.INGEST_API_KEY;
   if (!expected) return false;
@@ -36,8 +47,11 @@ export async function POST(req: Request) {
     if (!isAuthorized(req)) {
       return NextResponse.json(
         {
-          error:
-            "Unauthorized. Set header `x-ingest-api-key` (or `x-api-key`) to match INGEST_API_KEY.",
+          success: false,
+          error: {
+            message:
+              "Unauthorized. Set header `x-ingest-api-key` (or `x-api-key`) to match INGEST_API_KEY.",
+          },
         },
         { status: 401 }
       );
@@ -45,7 +59,7 @@ export async function POST(req: Request) {
 
     if (getIngestFlag()) {
       return NextResponse.json(
-        { error: "Ingest already in progress." },
+        { success: false, error: { message: "Ingest already in progress." } },
         { status: 409 }
       );
     }
@@ -54,13 +68,17 @@ export async function POST(req: Request) {
     const startedAt = Date.now();
     const result = await ingestCompanyData();
 
-    return NextResponse.json({
+    const payload = {
       ...result,
       durationMs: Date.now() - startedAt,
-    });
+    };
+
+    return NextResponse.json(payload, { status: result.success ? 200 : 500 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: serializeError(err) },
+      { status: 500 }
+    );
   } finally {
     setIngestFlag(false);
   }
