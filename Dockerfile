@@ -16,7 +16,7 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED 1
 
 RUN npm run build
-RUN npm run ingest
+
 # Stage 3: Runner
 FROM node:20-alpine AS runner
 WORKDIR /app

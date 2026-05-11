@@ -1,28 +1,47 @@
-import { ingestCompanyData } from "../lib/ingest-manager";
 import * as dotenv from "dotenv";
 
-// CHỈ load .env nếu đang chạy ở máy local (không có biến môi trường hệ thống)
-if (process.env.NODE_ENV !== 'production') {
-  dotenv.config();
-}
+// Load .env khi chạy local
+dotenv.config();
+
+type IngestApiResponse =
+  | { success: true; count: number; durationMs?: number }
+  | { success: false; error: unknown; durationMs?: number };
 
 async function main() {
   console.log("--- BẮT ĐẦU NẠP DỮ LIỆU CÔNG TY ---");
-  
-  // Log thử để kiểm tra (Xóa sau khi chạy xong để bảo mật)
-  if (process.env.GOOGLE_API_KEY) {
-    
-    console.log("Tìm thấy API Key: ", process.env.GOOGLE_API_KEY.substring(0, 5) + "...");
-  } else {
-    console.error("CẢNH BÁO: Không tìm thấy GOOGLE_API_KEY trong process.env");
+
+  const baseUrl = process.env.INGEST_BASE_URL ?? "http://localhost:3000";
+  const apiKey = process.env.INGEST_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("Missing INGEST_API_KEY in environment.");
   }
 
-  const result = await ingestCompanyData();
-  if (result?.success) {
-    console.log(`--- HOÀN THÀNH: Đã nạp ${result.count} files ---`);
-  } else {
-    console.log("--- THẤT BẠI: Vui lòng kiểm tra log lỗi ---");
+  const res = await fetch(`${baseUrl.replace(/\/$/, "")}/api/ingest`, {
+    method: "POST",
+    headers: {
+      "x-ingest-api-key": apiKey,
+    },
+  });
+
+  const json = (await res.json()) as IngestApiResponse;
+  if (!res.ok) {
+    throw new Error(
+      `Ingest API failed: HTTP ${res.status} ${res.statusText} :: ${JSON.stringify(
+        json
+      )}`
+    );
   }
+
+  if (json.success) {
+    console.log(`--- HOÀN THÀNH: Đã nạp ${json.count} files ---`);
+    if (typeof json.durationMs === "number") {
+      console.log(`--- Thời gian: ${json.durationMs}ms ---`);
+    }
+    return;
+  }
+
+  throw new Error(`Ingest failed: ${JSON.stringify(json)}`);
 }
 
 main().catch(console.error); 
