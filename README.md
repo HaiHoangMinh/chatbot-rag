@@ -44,10 +44,10 @@ graph TD
 ├── public/                 # Tài nguyên tĩnh (Logo, Images)
 ├── scripts/                # Các script chạy độc lập (Ingest, Reset)
 ├── docker-compose.yml      # Cấu hình chạy Docker (Web + ChromaDB)
-└── .env.local              # Biến môi trường (API Key, URL)
+└── .env              # Biến môi trường (API Key, URL)
 ```
 
-## 5. Cấu hình biến môi trường (.env.local)
+## 5. Cấu hình biến môi trường (.env)
 
 Hệ thống yêu cầu các biến sau để hoạt động:
 

@@ -1,7 +1,7 @@
 import { ingestCompanyData } from "../lib/ingest-manager";
 import * as dotenv from "dotenv";
 
-dotenv.config({ path: ".env.local" });
+dotenv.config({ path: ".env" });
 
 async function main() {
   console.log("--- BẮT ĐẦU NẠP DỮ LIỆU CÔNG TY ---");
