@@ -11,6 +11,7 @@ async function main() {
   
   // Log thử để kiểm tra (Xóa sau khi chạy xong để bảo mật)
   if (process.env.GOOGLE_API_KEY) {
+    
     console.log("Tìm thấy API Key: ", process.env.GOOGLE_API_KEY.substring(0, 5) + "...");
   } else {
     console.error("CẢNH BÁO: Không tìm thấy GOOGLE_API_KEY trong process.env");
@@ -24,4 +25,4 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+main().catch(console.error); 
