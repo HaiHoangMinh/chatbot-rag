@@ -277,7 +277,7 @@ export default function ChatbotPage() {
               onChange={handleInput}
               onKeyDown={handleKeyDown}
               className="w-full max-h-32 min-h-[48px] resize-none outline-none py-3 px-1 text-gray-700 bg-transparent text-base font-medium placeholder:text-gray-300"
-              placeholder="Nhập câu hỏi về Samkwang tại đây..."
+              placeholder="Hỏi về Samkwang..."
               rows={1}
               disabled={isLoading}
               autoFocus
