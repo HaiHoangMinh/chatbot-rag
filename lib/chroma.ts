@@ -5,7 +5,7 @@ import { Chroma } from "@langchain/community/vectorstores/chroma";
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { TaskType } from "@google/generative-ai";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import type { Where } from "chromadb";
+import { ChromaClient, type Where } from "chromadb";
 
 export type IngestDataOptions = {
   /**
@@ -77,14 +77,98 @@ function getCollectionName(override?: string) {
   return override ?? process.env.CHROMA_COLLECTION ?? "chatbot";
 }
 
+function normalizeChromaEndpoint(rawUrl: string) {
+  // Accept:
+  // - http(s)://host:port[/...]
+  // - host:port
+  // - host
+  const asUrl = (() => {
+    try {
+      return new URL(rawUrl);
+    } catch {
+      // If scheme missing, assume http.
+      return new URL(`http://${rawUrl}`);
+    }
+  })();
+
+  // Important: DO NOT pass /api/v1 here. chromadb client builds the API path itself.
+  const host = asUrl.hostname;
+  const port =
+    asUrl.port?.trim() !== ""
+      ? Number.parseInt(asUrl.port, 10)
+      : asUrl.protocol === "https:"
+        ? 443
+        : 80;
+
+  if (!Number.isFinite(port)) {
+    throw new Error(`Invalid CHROMA_URL port: ${asUrl.port}`);
+  }
+
+  // SSL rules:
+  // - If explicitly https:, ssl=true
+  // - If hostname is .internal or localhost, prefer ssl=false
+  // - Otherwise infer from protocol
+  const isInternal =
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "::1" ||
+    host.endsWith(".internal");
+
+  const ssl = asUrl.protocol === "https:" ? true : isInternal ? false : false;
+
+  return { host, port, ssl };
+}
+
+let _client: ChromaClient | null = null;
+let _clientKey: string | null = null;
+
+async function getChromaClient(rawUrl: string) {
+  const { host, port, ssl } = normalizeChromaEndpoint(rawUrl);
+  const key = `${ssl ? "https" : "http"}://${host}:${port}`;
+
+  if (_client && _clientKey === key) return _client;
+
+  const client = new ChromaClient({ host, port, ssl });
+
+  // Ping/heartbeat before use to fail fast with a clear error.
+  try {
+    await client.heartbeat();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Cannot reach ChromaDB at ${key}. Heartbeat failed: ${message}`
+    );
+  }
+
+  _client = client;
+  _clientKey = key;
+  return client;
+}
+
 async function getVectorStore(params?: {
   chromaUrl?: string;
   collectionName?: string;
 }) {
-  const embeddings = getEmbeddings();
+  const embeddings = getEmbeddings(); //
+  const chromaUrl = getChromaUrl(params?.chromaUrl); //
+  const client = await getChromaClient(chromaUrl); //
+  const collectionName = getCollectionName(params?.collectionName); //
+
+  // BƯỚC FIX QUAN TRỌNG: Chủ động kiểm tra và tạo collection bằng client chính chủ
+  // Việc này giúp tránh lỗi 404 khi LangChain tự gọi getCollection
+  try {
+    await client.getOrCreateCollection({
+      name: collectionName,
+    });
+    console.log(`--- Đã xác nhận/tạo thành công collection: ${collectionName} ---`);
+  } catch (err) {
+    console.error("Lỗi khi đảm bảo collection tồn tại:", err);
+    // Tiếp tục chạy vì LangChain có thể có cơ chế fallback, nhưng log để debug
+  }
+
   return new Chroma(embeddings, {
-    url: getChromaUrl(params?.chromaUrl),
-    collectionName: getCollectionName(params?.collectionName),
+    index: client, // Sử dụng client đã config chuẩn host/port
+    collectionName: collectionName,
   });
 }
 
