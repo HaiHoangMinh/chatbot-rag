@@ -53,9 +53,10 @@ let _client: ChromaClient | null = null;
 async function getChromaClient(rawUrl: string) {
   if (_client) return _client;
 
-  const cleanUrl = rawUrl.replace(/\/$/, ""); 
-  
-  // Sử dụng path trực tiếp là cách an toàn nhất để kết nối nội bộ .internal
+  // Xóa mọi dấu gạch chéo dư thừa ở cuối URL
+  const cleanUrl = rawUrl.replace(/\/+$/, ""); 
+
+  // Khởi tạo client bằng path trực tiếp để khớp với Public URL
   const client = new ChromaClient({ 
     path: cleanUrl 
   });
