@@ -22,23 +22,19 @@ export type QueryVectorStoreOptions = {
   filter?: Where;
 };
 
-/**
- * Khởi tạo Embeddings sử dụng Gemini
- */
 function getEmbeddings() {
   const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
-  if (!apiKey) {
-    throw new Error("Missing GEMINI_API_KEY for embeddings.");
-  }
+  if (!apiKey) throw new Error("Missing GEMINI_API_KEY for embeddings.");
   return new GoogleGenerativeAIEmbeddings({
     apiKey,
-    modelName: "gemini-embedding-2", // Khớp với cấu hình Variable của bạn
+    modelName: "gemini-embedding-2",
     taskType: TaskType.RETRIEVAL_DOCUMENT,
   });
 }
 
 function getChromaUrl(override?: string) {
-  return override ?? process.env.CHROMA_URL ?? "http://localhost:8000";
+  // Ưu tiên link nội bộ Railway để tránh Timeout 10s
+  return override ?? process.env.CHROMA_URL ?? "http://chroma.railway.internal:8000";
 }
 
 function getCollectionName(override?: string) {
@@ -48,73 +44,36 @@ function getCollectionName(override?: string) {
 let _client: ChromaClient | null = null;
 
 /**
- * Khởi tạo Client Chroma tối giản cho Railway nội bộ
+ * Khởi tạo Client siêu tối giản để tránh lỗi Timeout
  */
-// lib/chroma.ts
-// ... giữ nguyên các phần import và types ...
-
 async function getChromaClient(rawUrl: string) {
   if (_client) return _client;
 
   const cleanUrl = rawUrl.replace(/\/+$/, ""); 
   
-  // SỬA TẠI ĐÂY: Dùng link trực tiếp vào path nhưng đảm bảo thư viện 
-  // không hiểu nhầm là local path bằng cách kiểm tra protocol
-  const client = new ChromaClient({ 
-    path: cleanUrl
+  // Chỉ khởi tạo instance, không gọi heartbeat ở đây để tránh treo 10s
+  _client = new ChromaClient({ 
+    path: cleanUrl 
   });
 
-  // Kiểm tra kết nối ngay lập tức để tránh lỗi âm thầm
+  return _client;
+}
+
+/**
+ * HÀM MỚI: Kiểm tra kết nối trực tiếp từ Chatbot sang Chroma
+ */
+export async function testChromaConnection() {
   try {
-    await client.version();
-  } catch (e) {
-    console.error("Chroma connection failed:", e);
+    const url = getChromaUrl();
+    const client = await getChromaClient(url);
+    // Gọi lệnh version để xác nhận server phản hồi
+    const version = await client.version(); 
+    return { success: true, version, url };
+  } catch (error: any) {
+    return { success: false, error: error.message, url: getChromaUrl() };
   }
-
-  _client = client;
-  return client;
 }
 
-/**
- * Nạp dữ liệu: Ép sử dụng Native Client để ổn định nhất
- */
-export async function ingestData(text: string, options: IngestDataOptions = {}) {
-  if (!text?.trim()) return { addedIds: [], chunks: 0 };
-
-  const splitter = new RecursiveCharacterTextSplitter({
-    chunkSize: options.chunkSize ?? 1000,
-    chunkOverlap: options.chunkOverlap ?? 200,
-  });
-
-  const docs = await splitter.createDocuments([text], [options.metadata ?? {}]);
-  const chromaUrl = getChromaUrl(options.chromaUrl);
-  const client = await getChromaClient(chromaUrl);
-  const collectionName = getCollectionName(options.collectionName);
-
-  // Đảm bảo collection tồn tại trước khi nạp
-  const collection = await client.getOrCreateCollection({ 
-    name: collectionName 
-  });
-
-  const embeddingsModel = getEmbeddings();
-  const rawTexts = docs.map(d => d.pageContent);
-  const vectors = await embeddingsModel.embedDocuments(rawTexts);
-  
-  const ids = docs.map(() => crypto.randomUUID());
-  
-  await collection.add({
-    ids: ids,
-    embeddings: vectors,
-    metadatas: docs.map(d => d.metadata),
-    documents: rawTexts
-  });
-
-  return { addedIds: ids, chunks: docs.length };
-}
-
-/**
- * Lấy instance VectorStore cho LangChain
- */
 async function getVectorStore(params?: {
   chromaUrl?: string;
   collectionName?: string;
@@ -125,16 +84,13 @@ async function getVectorStore(params?: {
   const collectionName = getCollectionName(params?.collectionName);
 
   return new Chroma(embeddings, {
-    index: client, // Truyền client đã config path nội bộ vào đây
+    index: client,
     collectionName: collectionName,
   });
 }
 
-/**
- * Nạp dữ liệu vào ChromaDB bằng Native SDK (Bỏ qua lỗi LangChain ensureCollection)
- */
 export async function ingestData(text: string, options: IngestDataOptions = {}) {
-  if (!text?.trim()) return { addedIds: [] as string[], chunks: 0 };
+  if (!text?.trim()) return { addedIds: [], chunks: 0 };
 
   const splitter = new RecursiveCharacterTextSplitter({
     chunkSize: options.chunkSize ?? 1000,
@@ -148,12 +104,12 @@ export async function ingestData(text: string, options: IngestDataOptions = {}) 
 
   const chromaUrl = getChromaUrl(options.chromaUrl);
   const client = await getChromaClient(chromaUrl);
-  const embeddingsModel = getEmbeddings();
   const collectionName = getCollectionName(options.collectionName);
 
-  // Ép tạo collection trực tiếp để tránh lỗi 404
+  // Ép tạo collection để đảm bảo DB đã sẵn sàng
   const collection = await client.getOrCreateCollection({ name: collectionName });
 
+  const embeddingsModel = getEmbeddings();
   const rawTexts = validDocs.map(d => d.pageContent);
   const vectors = await embeddingsModel.embedDocuments(rawTexts);
   
@@ -169,23 +125,18 @@ export async function ingestData(text: string, options: IngestDataOptions = {}) 
   return { addedIds: ids, chunks: validDocs.length };
 }
 
-/**
- * Truy vấn dữ liệu từ ChromaDB
- */
 export async function queryVectorStore(
   query: string,
   options: QueryVectorStoreOptions = {}
 ) {
   if (!query?.trim()) return { context: "", matches: [] };
 
-  const k = options.k ?? 4;
   const vectorStore = await getVectorStore({
     chromaUrl: options.chromaUrl,
     collectionName: options.collectionName,
   });
 
-  const results = await vectorStore.similaritySearchWithScore(query, k, options.filter);
-
+  const results = await vectorStore.similaritySearchWithScore(query, options.k ?? 4, options.filter);
   const matches = results.map(([doc, score]) => ({ doc, score }));
   const context = matches.map((m) => m.doc.pageContent).join("\n\n---\n\n");
   return { context, matches };
