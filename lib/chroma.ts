@@ -123,15 +123,15 @@ let _client: ChromaClient | null = null;
 let _clientKey: string | null = null;
 
 async function getChromaClient(rawUrl: string) {
-  const { host, port, ssl } = normalizeChromaEndpoint(rawUrl);
-  const key = `${ssl ? "https" : "http"}://${host}:${port}`;
+  const { host, port, ssl } = normalizeChromaEndpoint(rawUrl); //
+  const key = `${ssl ? "https" : "http"}://${host}:${port}`; //
 
-  if (_client && _clientKey === key) return _client;
+  if (_client && _clientKey === key) return _client; //
 
-  const client = new ChromaClient({ host, port, ssl });
+  const client = new ChromaClient({ host, port, ssl }); //
 
-  // Ping/heartbeat before use to fail fast with a clear error.
-  try {
+  // TẠM THỜI BỎ QUA HEARTBEAT ĐỂ TRÁNH LỖI 404 TRÊN RAILWAY
+  /* try {
     await client.heartbeat();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -139,10 +139,11 @@ async function getChromaClient(rawUrl: string) {
       `Cannot reach ChromaDB at ${key}. Heartbeat failed: ${message}`
     );
   }
+  */
 
-  _client = client;
-  _clientKey = key;
-  return client;
+  _client = client; //
+  _clientKey = key; //
+  return client; //
 }
 
 async function getVectorStore(params?: {
