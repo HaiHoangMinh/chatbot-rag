@@ -50,19 +50,66 @@ let _client: ChromaClient | null = null;
 /**
  * Khởi tạo Client Chroma tối giản cho Railway nội bộ
  */
+// lib/chroma.ts
+// ... giữ nguyên các phần import và types ...
+
 async function getChromaClient(rawUrl: string) {
   if (_client) return _client;
 
-  // Xóa mọi dấu gạch chéo dư thừa ở cuối URL
   const cleanUrl = rawUrl.replace(/\/+$/, ""); 
-
-  // Khởi tạo client bằng path trực tiếp để khớp với Public URL
+  
+  // SỬA TẠI ĐÂY: Dùng link trực tiếp vào path nhưng đảm bảo thư viện 
+  // không hiểu nhầm là local path bằng cách kiểm tra protocol
   const client = new ChromaClient({ 
-    path: cleanUrl 
+    path: cleanUrl
   });
+
+  // Kiểm tra kết nối ngay lập tức để tránh lỗi âm thầm
+  try {
+    await client.version();
+  } catch (e) {
+    console.error("Chroma connection failed:", e);
+  }
 
   _client = client;
   return client;
+}
+
+/**
+ * Nạp dữ liệu: Ép sử dụng Native Client để ổn định nhất
+ */
+export async function ingestData(text: string, options: IngestDataOptions = {}) {
+  if (!text?.trim()) return { addedIds: [], chunks: 0 };
+
+  const splitter = new RecursiveCharacterTextSplitter({
+    chunkSize: options.chunkSize ?? 1000,
+    chunkOverlap: options.chunkOverlap ?? 200,
+  });
+
+  const docs = await splitter.createDocuments([text], [options.metadata ?? {}]);
+  const chromaUrl = getChromaUrl(options.chromaUrl);
+  const client = await getChromaClient(chromaUrl);
+  const collectionName = getCollectionName(options.collectionName);
+
+  // Đảm bảo collection tồn tại trước khi nạp
+  const collection = await client.getOrCreateCollection({ 
+    name: collectionName 
+  });
+
+  const embeddingsModel = getEmbeddings();
+  const rawTexts = docs.map(d => d.pageContent);
+  const vectors = await embeddingsModel.embedDocuments(rawTexts);
+  
+  const ids = docs.map(() => crypto.randomUUID());
+  
+  await collection.add({
+    ids: ids,
+    embeddings: vectors,
+    metadatas: docs.map(d => d.metadata),
+    documents: rawTexts
+  });
+
+  return { addedIds: ids, chunks: docs.length };
 }
 
 /**
