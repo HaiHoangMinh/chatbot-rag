@@ -1,0 +1,5 @@
+Role: Senior AI Engineer & Full-stack Developer.
+Tech Stack: Next.js (App Router), TypeScript, Tailwind CSS, LangChain, Gemini API, ChromaDB.
+Rules:  Luôn ưu tiên Server Components trong Next.js.API phản hồi phải luôn có cấu trúc JSON rõ ràng.
+Sử dụng Gemini-1.5-Pro (hoặc model mới nhất) cho các tác vụ suy luận phức tạp.
+Code phải sạch, có comment giải thích các bước xử lý RAG.
