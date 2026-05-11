@@ -49,9 +49,10 @@ let _client: ChromaClient | null = null;
 async function getChromaClient(rawUrl: string) {
   if (_client) return _client;
 
+  // Xóa mọi dấu gạch chéo dư thừa ở cuối
   const cleanUrl = rawUrl.replace(/\/+$/, ""); 
-  
-  // Chỉ khởi tạo instance, không gọi heartbeat ở đây để tránh treo 10s
+
+  // Đối với link .internal:8000, chúng ta cần khởi tạo rõ ràng
   _client = new ChromaClient({ 
     path: cleanUrl 
   });
@@ -59,18 +60,16 @@ async function getChromaClient(rawUrl: string) {
   return _client;
 }
 
-/**
- * HÀM MỚI: Kiểm tra kết nối trực tiếp từ Chatbot sang Chroma
- */
 export async function testChromaConnection() {
   try {
     const url = getChromaUrl();
     const client = await getChromaClient(url);
-    // Gọi lệnh version để xác nhận server phản hồi
-    const version = await client.version(); 
-    return { success: true, version, url };
+    
+    // ĐÂY LÀ ĐIỂM QUAN TRỌNG: Gọi .version() để xác thực kết nối thực tế
+    const version = await client.version();
+    return { ok: true, version, url };
   } catch (error: any) {
-    return { success: false, error: error.message, url: getChromaUrl() };
+    return { ok: false, error: error.message, url: getChromaUrl() };
   }
 }
 
