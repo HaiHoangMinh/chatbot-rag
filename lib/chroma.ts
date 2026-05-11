@@ -125,8 +125,6 @@ let _clientKey: string | null = null;
 async function getChromaClient(rawUrl: string) {
   if (_client) return _client;
 
-  // Sử dụng tham số path và truyền thẳng URL sạch (không có /api/v1)
-  // Thư viện sẽ tự động thêm endpoint chuẩn vào sau URL này
   const client = new ChromaClient({ 
     path: rawUrl.replace(/\/$/, "") 
   });
