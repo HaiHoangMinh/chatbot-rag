@@ -123,27 +123,16 @@ let _client: ChromaClient | null = null;
 let _clientKey: string | null = null;
 
 async function getChromaClient(rawUrl: string) {
-  const { host, port, ssl } = normalizeChromaEndpoint(rawUrl); //
-  const key = `${ssl ? "https" : "http"}://${host}:${port}`; //
+  if (_client) return _client;
 
-  if (_client && _clientKey === key) return _client; //
+  // Sử dụng tham số path và truyền thẳng URL sạch (không có /api/v1)
+  // Thư viện sẽ tự động thêm endpoint chuẩn vào sau URL này
+  const client = new ChromaClient({ 
+    path: rawUrl.replace(/\/$/, "") 
+  });
 
-  const client = new ChromaClient({ host, port, ssl }); //
-
-  // TẠM THỜI BỎ QUA HEARTBEAT ĐỂ TRÁNH LỖI 404 TRÊN RAILWAY
-  /* try {
-    await client.heartbeat();
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(
-      `Cannot reach ChromaDB at ${key}. Heartbeat failed: ${message}`
-    );
-  }
-  */
-
-  _client = client; //
-  _clientKey = key; //
-  return client; //
+  _client = client;
+  return client;
 }
 
 async function getVectorStore(params?: {
@@ -155,20 +144,8 @@ async function getVectorStore(params?: {
   const client = await getChromaClient(chromaUrl); //
   const collectionName = getCollectionName(params?.collectionName); //
 
-  // BƯỚC FIX QUAN TRỌNG: Chủ động kiểm tra và tạo collection bằng client chính chủ
-  // Việc này giúp tránh lỗi 404 khi LangChain tự gọi getCollection
-  try {
-    await client.getOrCreateCollection({
-      name: collectionName,
-    });
-    console.log(`--- Đã xác nhận/tạo thành công collection: ${collectionName} ---`);
-  } catch (err) {
-    console.error("Lỗi khi đảm bảo collection tồn tại:", err);
-    // Tiếp tục chạy vì LangChain có thể có cơ chế fallback, nhưng log để debug
-  }
-
   return new Chroma(embeddings, {
-    index: client, // Sử dụng client đã config chuẩn host/port
+    index: client, // Quan trọng: Truyền client đã khởi tạo vào đây
     collectionName: collectionName,
   });
 }
